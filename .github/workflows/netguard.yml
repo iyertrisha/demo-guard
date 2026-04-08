@@ -1,0 +1,117 @@
+name: NetGuard IaC Security Scan
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  netguard-scan:
+    name: NetGuard Security Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect changed IaC files
+        id: collect
+        run: |
+          git fetch origin "${{ github.event.pull_request.base.ref }}" --depth=1
+          CHANGED=$(git diff --name-only "origin/${{ github.event.pull_request.base.ref }}"...HEAD | grep -E '\.(tf|yaml|yml)$' || true)
+          echo "changed_files<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Run NetGuard scan
+        id: scan
+        if: steps.collect.outputs.changed_files != ''
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import hmac
+          import hashlib
+          import urllib.request
+
+          changed = os.environ["CHANGED_FILES"].strip().splitlines()
+          files = []
+          for path in changed:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+              files.append({"filename": path, "content": f.read()})
+
+          payload = {
+            "repository": os.environ["GITHUB_REPOSITORY"],
+            "repository_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}",
+            "pr_number": int(os.environ["PR_NUMBER"]),
+            "commit_sha": os.environ["GITHUB_SHA"],
+            "files": files,
+          }
+          payload_bytes = json.dumps(payload).encode("utf-8")
+          secret = os.environ.get("NETGUARD_SECRET", "")
+          signature = hmac.new(secret.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
+          req = urllib.request.Request(
+            f"{os.environ['NETGUARD_API_URL'].rstrip('/')}/api/scan",
+            data=payload_bytes,
+            headers={
+              "Content-Type": "application/json",
+              "X-NetGuard-Signature": f"sha256={signature}",
+            },
+            method="POST",
+          )
+          with urllib.request.urlopen(req) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+
+          summary = result.get("summary", {})
+          resolution = result.get("resolution_summary", {})
+          prefix = (
+            f"{resolution.get('resolved_findings', 0)} findings resolved, "
+            f"{resolution.get('new_findings', 0)} new finding(s)"
+          )
+          lines = [
+            "## NetGuard Scan Results",
+            "",
+            f"**{prefix}**",
+            "",
+            f"- Total findings: {summary.get('total', 0)}",
+            f"- Critical: {summary.get('critical', 0)}",
+            f"- High: {summary.get('high', 0)}",
+            f"- Medium: {summary.get('medium', 0)}",
+            f"- Low: {summary.get('low', 0)}",
+          ]
+          body = "\n".join(lines)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+            out.write(f"comment_body<<EOF\n{body}\nEOF\n")
+            out.write(f"blocking={str(result.get('blocking', False)).lower()}\n")
+          PY
+        env:
+          CHANGED_FILES: ${{ steps.collect.outputs.changed_files }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          NETGUARD_API_URL: ${{ secrets.NETGUARD_API_URL }}
+          NETGUARD_SECRET: ${{ secrets.NETGUARD_SECRET }}
+
+      - name: Post PR comment
+        if: steps.collect.outputs.changed_files != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `${{ steps.scan.outputs.comment_body }}`
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            })
+
+      - name: Enforce merge blocking
+        if: steps.collect.outputs.changed_files != ''
+        run: |
+          if [ "${{ steps.scan.outputs.blocking }}" = "true" ]; then
+            echo "NetGuard blocking merge due to non-overridden critical findings."
+            exit 1
+          fi
+          echo "No blocking critical findings."
+        env:
+          NETGUARD_API_URL: ${{ secrets.NETGUARD_API_URL }}
