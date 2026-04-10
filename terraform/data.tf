@@ -8,7 +8,7 @@ resource "aws_db_instance" "postgres_primary" {
   allocated_storage          = 50
   username                   = "dbadmin"
   password                   = "UnsafeDemoPasswordDoNotUse"
-  vpc_security_group_ids     = [aws_security_group.public_db_ports.id, aws_security_group.db_private_sg.id]
+  vpc_security_group_ids     = [aws_security_group.db_private_sg.id]
   db_subnet_group_name       = aws_db_subnet_group.demo.name
   publicly_accessible        = true
   storage_encrypted          = false
@@ -25,7 +25,7 @@ resource "aws_db_instance" "postgres_replica" {
   identifier             = "demo-guard-pg-replica"
   replicate_source_db    = aws_db_instance.postgres_primary.identifier
   instance_class         = "db.t3.medium"
-  vpc_security_group_ids = [aws_security_group.public_db_ports.id]
+  vpc_security_group_ids = [aws_security_group.db_private_sg.id]
   publicly_accessible    = true
   storage_encrypted      = false
   skip_final_snapshot    = true
