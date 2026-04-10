@@ -119,9 +119,9 @@ jobs:
         if: steps.collect.outputs.changed_files != ''
         run: |
           if [ "${{ steps.scan.outputs.blocking }}" = "true" ]; then
-            echo "NetGuard blocking merge due to non-overridden critical findings."
+            echo "NetGuard blocking merge due to non-overridden HIGH or CRITICAL findings."
             exit 1
           fi
-          echo "No blocking critical findings."
+          echo "No blocking HIGH or CRITICAL findings."
         env:
           NETGUARD_API_URL: ${{ secrets.NETGUARD_API_URL }}
