@@ -81,10 +81,15 @@ jobs:
             f"- Medium: {summary.get('medium', 0)}",
             f"- Low: {summary.get('low', 0)}",
           ]
+          scan_id = result.get("scan_id")
+          ui_base = os.environ.get("NETGUARD_UI_URL", os.environ["NETGUARD_API_URL"].replace(":8000", ":5173"))
+          lines.append("")
+          lines.append(f"[View findings]({ui_base}/scans/{scan_id}) | [View topology graph]({ui_base}/scans/{scan_id}/graph)")
           body = "\n".join(lines)
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
             out.write(f"comment_body<<EOF\n{body}\nEOF\n")
             out.write(f"blocking={str(result.get('blocking', False)).lower()}\n")
+            out.write(f"scan_id={scan_id}\n")
           PY
         env:
           CHANGED_FILES: ${{ steps.collect.outputs.changed_files }}
