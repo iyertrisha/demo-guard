@@ -124,3 +124,14 @@ resource "aws_lb" "public_app_alb" {
     Name = "demo-public-alb"
   }
 }
+
+# Test: unencrypted EBS volume for NetGuard scan verification
+resource "aws_ebs_volume" "unencrypted_test" {
+  availability_zone = "us-east-1a"
+  size              = 20
+  encrypted         = false
+
+  tags = {
+    Name = "netguard-scan-test"
+  }
+}
