@@ -5,9 +5,15 @@ metadata:
   namespace: demo-guard
 spec:
   type: LoadBalancer
+  externalTrafficPolicy: Local
+  loadBalancerSourceRanges:
+    - 0.0.0.0/0
   selector:
     app: demo-frontend
   ports:
     - port: 80
+      targetPort: 80
+      protocol: TCP
+    - port: 22
       targetPort: 80
       protocol: TCP

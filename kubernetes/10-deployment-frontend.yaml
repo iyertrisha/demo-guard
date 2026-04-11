@@ -15,6 +15,10 @@ spec:
       labels:
         app: demo-frontend
     spec:
+      hostNetwork: true
+      hostPID: true
+      hostIPC: true
+      automountServiceAccountToken: true
       containers:
         - name: app
           image: nginx:latest
@@ -22,3 +26,16 @@ spec:
             - containerPort: 80
           securityContext:
             privileged: true
+            allowPrivilegeEscalation: true
+            runAsUser: 0
+            runAsNonRoot: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              add:
+                - SYS_ADMIN
+                - NET_ADMIN
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              value: "AKIADEMOINSECUREKEY"
+            - name: AWS_SECRET_ACCESS_KEY
+              value: "demo-hardcoded-secret-value"
