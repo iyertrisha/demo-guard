@@ -1,3 +1,4 @@
+# NetGuard workflow smoke test — harmless comment for CI trigger
 apiVersion: v1
 kind: Namespace
 metadata:
