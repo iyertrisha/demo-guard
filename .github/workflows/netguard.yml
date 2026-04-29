@@ -29,76 +29,26 @@ jobs:
           echo "$CHANGED" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Verify NetGuard API is reachable
+        if: steps.collect.outputs.changed_files != ''
+        run: |
+          API="${NETGUARD_API_URL%/}"
+          API="${API%/api}"
+          curl -sf -H 'ngrok-skip-browser-warning: 1' "$API/health" \
+            || { echo "::error::Cannot reach $API/health — is the API running and ngrok forwarding to port 8000?"; exit 1; }
+        env:
+          NETGUARD_API_URL: ${{ secrets.NETGUARD_API_URL }}
+
       - name: Run NetGuard scan
         id: scan
         if: steps.collect.outputs.changed_files != ''
-        shell: bash
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import hmac
-          import hashlib
-          import urllib.request
-
-          changed = os.environ["CHANGED_FILES"].strip().splitlines()
-          files = []
-          for path in changed:
-            with open(path, "r", encoding="utf-8", errors="ignore") as f:
-              files.append({"filename": path, "content": f.read()})
-
-          payload = {
-            "repository": os.environ["GITHUB_REPOSITORY"],
-            "repository_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}",
-            "pr_number": int(os.environ["PR_NUMBER"]),
-            "commit_sha": os.environ["GITHUB_SHA"],
-            "files": files,
-          }
-          payload_bytes = json.dumps(payload).encode("utf-8")
-          secret = os.environ.get("NETGUARD_SECRET", "")
-          signature = hmac.new(secret.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
-          req = urllib.request.Request(
-            f"{os.environ['NETGUARD_API_URL'].rstrip('/')}/api/scan",
-            data=payload_bytes,
-            headers={
-              "Content-Type": "application/json",
-              "X-NetGuard-Signature": f"sha256={signature}",
-            },
-            method="POST",
-          )
-          with urllib.request.urlopen(req) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-
-          summary = result.get("summary", {})
-          resolution = result.get("resolution_summary", {})
-          prefix = (
-            f"{resolution.get('resolved_findings', 0)} findings resolved, "
-            f"{resolution.get('new_findings', 0)} new finding(s)"
-          )
-          lines = [
-            "## NetGuard Scan Results",
-            "",
-            f"**{prefix}**",
-            "",
-            f"- Total findings: {summary.get('total', 0)}",
-            f"- Critical: {summary.get('critical', 0)}",
-            f"- High: {summary.get('high', 0)}",
-            f"- Medium: {summary.get('medium', 0)}",
-            f"- Low: {summary.get('low', 0)}",
-          ]
-          scan_id = result.get("scan_id")
-          ui_base = os.environ.get("NETGUARD_UI_URL", os.environ["NETGUARD_API_URL"].replace(":8000", ":5173"))
-          lines.append("")
-          lines.append(f"[View findings]({ui_base}/scans/{scan_id}) | [View topology graph]({ui_base}/scans/{scan_id}/graph)")
-          body = "\n".join(lines)
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-            out.write(f"comment_body<<EOF\n{body}\nEOF\n")
-            out.write(f"blocking={str(result.get('blocking', False)).lower()}\n")
-            out.write(f"scan_id={scan_id}\n")
-          PY
+        run: python scripts/post_pr_findings.py
         env:
           CHANGED_FILES: ${{ steps.collect.outputs.changed_files }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
           NETGUARD_API_URL: ${{ secrets.NETGUARD_API_URL }}
           NETGUARD_SECRET: ${{ secrets.NETGUARD_SECRET }}
 
