@@ -3,7 +3,10 @@
 NetGuard CI helper: POST /api/scan, build enhanced PR summary comment,
 optionally post GitHub inline review comments on changed files.
 
-Expects GitHub Actions env (CHANGED_FILES, PR_NUMBER, NETGUARD_API_URL, ...).
+Triggered automatically on every PR open/update by the netguard.yml workflow.
+Scans ALL .tf/.yaml/.yml files tracked in the PR branch (full topology context).
+
+Expects GitHub Actions env (IAC_FILES, PR_NUMBER, NETGUARD_API_URL, ...).
 Writes comment_body, blocking, scan_id to GITHUB_OUTPUT for downstream steps.
 """
 
@@ -88,16 +91,46 @@ def _truncate(text: str, max_len: int = 240) -> str:
 def main() -> int:
     github_output = os.environ["GITHUB_OUTPUT"]
 
-    changed = os.environ["CHANGED_FILES"].strip().splitlines()
+    # IAC_FILES: newline-separated list of all .tf/.yaml/.yml paths in the PR
+    # branch (set by the workflow's "Collect all IaC files" step).
+    # Fall back to legacy CHANGED_FILES for local testing / backwards compat.
+    raw_file_list = os.environ.get("IAC_FILES") or os.environ.get("CHANGED_FILES", "")
+    all_paths = [p.strip() for p in raw_file_list.strip().splitlines() if p.strip()]
+
+    if not all_paths:
+        print("No IaC files found in this branch — nothing to scan.", file=sys.stderr)
+        # Write safe no-op outputs so downstream steps don't fail.
+        with open(github_output, "a", encoding="utf-8") as out:
+            out.write("comment_body<<EOF\nNo IaC files (.tf/.yaml/.yml) found in this branch.\nEOF\n")
+            out.write("blocking=false\n")
+            out.write("scan_id=\n")
+        return 0
+
     files = []
-    for path in changed:
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            files.append({"filename": path, "content": f.read()})
+    missing: list[str] = []
+    for path in all_paths:
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+                files.append({"filename": path, "content": fh.read()})
+        except OSError as exc:
+            missing.append(f"{path}: {exc}")
+
+    if missing:
+        print(
+            f"Warning: {len(missing)} IaC file(s) could not be read (deleted/renamed?):\n"
+            + "\n".join(missing),
+            file=sys.stderr,
+        )
+
+    if not files:
+        print("All listed IaC files were unreadable — aborting scan.", file=sys.stderr)
+        raise SystemExit(2)
 
     repository = os.environ["GITHUB_REPOSITORY"]
     pr_number = int(os.environ["PR_NUMBER"])
     commit_sha = os.environ["GITHUB_SHA"]
 
+    netguard_api_key = os.environ.get("NETGUARD_API_KEY", "").strip()
     payload = {
         "repository": repository,
         "repository_url": f"https://github.com/{repository}",
@@ -105,6 +138,10 @@ def main() -> int:
         "commit_sha": commit_sha,
         "files": files,
     }
+    if netguard_api_key:
+        # Embedded inside the signed body so HMAC covers it; the API resolves
+        # the org from this key when X-NetGuard-Signature is valid.
+        payload["api_key"] = netguard_api_key
     payload_bytes = json.dumps(payload).encode("utf-8")
     secret = os.environ.get("NETGUARD_SECRET", "")
     signature = hmac.new(secret.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
@@ -179,10 +216,13 @@ def main() -> int:
 
     findings: list[dict] = []
     if scan_id is not None:
+        scan_headers = {"ngrok-skip-browser-warning": "1"}
+        if netguard_api_key:
+            scan_headers["X-API-Key"] = netguard_api_key
         scan_req = urllib.request.Request(
             f"{api_base}/api/scans/{scan_id}",
             method="GET",
-            headers={"ngrok-skip-browser-warning": "1"},
+            headers=scan_headers,
         )
         try:
             with urllib.request.urlopen(scan_req, timeout=60) as sr:
