@@ -27,3 +27,5 @@ variable "environment" {
 provider "aws" {
   region = "us-east-1"
 }
+# NetGuard test scan trigger
+# NetGuard test scan trigger
