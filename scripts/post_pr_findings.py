@@ -7,6 +7,9 @@ Triggered automatically on every PR open/update by the netguard.yml workflow.
 Scans ALL .tf/.yaml/.yml files tracked in the PR branch (full topology context).
 
 Expects GitHub Actions env (IAC_FILES, PR_NUMBER, NETGUARD_API_URL, ...).
+Optional: NETGUARD_SCAN_HTTP_TIMEOUT_SECONDS (default 600) for POST /api/scan;
+NETGUARD_SCAN_DETAIL_HTTP_TIMEOUT_SECONDS (default 120) for GET scan detail.
+
 Writes comment_body, blocking, scan_id to GITHUB_OUTPUT for downstream steps.
 """
 
@@ -16,9 +19,24 @@ import hashlib
 import hmac
 import json
 import os
+import socket
 import sys
 import urllib.error
 import urllib.request
+
+
+def _timeout_seconds(env_var: str, default: float) -> float:
+    """Parse a positive HTTP timeout from env; clamp minimum 30s."""
+    raw = os.environ.get(env_var, "").strip()
+    if raw:
+        try:
+            return max(30.0, float(raw))
+        except ValueError:
+            print(
+                f"Warning: invalid {env_var}={raw!r}, using default {default}s",
+                file=sys.stderr,
+            )
+    return default
 
 
 def _normalize_netguard_api_base(raw: str) -> str:
@@ -149,6 +167,12 @@ def main() -> int:
     raw_base = os.environ["NETGUARD_API_URL"]
     api_base = _normalize_netguard_api_base(raw_base)
     scan_url = f"{api_base}/api/scan"
+    # Large repos + per-finding LLM scoring often exceed 120s; default 600s.
+    scan_post_timeout = _timeout_seconds("NETGUARD_SCAN_HTTP_TIMEOUT_SECONDS", 600.0)
+    scan_detail_timeout = _timeout_seconds(
+        "NETGUARD_SCAN_DETAIL_HTTP_TIMEOUT_SECONDS",
+        120.0,
+    )
     req = urllib.request.Request(
         scan_url,
         data=payload_bytes,
@@ -160,8 +184,18 @@ def main() -> int:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=scan_post_timeout) as resp:
             result = json.loads(resp.read().decode("utf-8"))
+    except (TimeoutError, socket.timeout) as e:
+        print(
+            f"NetGuard API timed out waiting for POST {scan_url} "
+            f"(timeout={scan_post_timeout}s).\n"
+            "Large IaC trees + Gemini enrichment can take several minutes.\n"
+            "Increase NETGUARD_SCAN_HTTP_TIMEOUT_SECONDS in your workflow "
+            "(e.g. 900) or reduce LLM work on the risk_scorer host.",
+            file=sys.stderr,
+        )
+        raise SystemExit(3) from e
     except urllib.error.HTTPError as e:
         err_body = e.read().decode("utf-8", errors="replace")
         hints = (
@@ -225,7 +259,7 @@ def main() -> int:
             headers=scan_headers,
         )
         try:
-            with urllib.request.urlopen(scan_req, timeout=60) as sr:
+            with urllib.request.urlopen(scan_req, timeout=scan_detail_timeout) as sr:
                 scan_body = json.loads(sr.read().decode("utf-8"))
                 findings = scan_body.get("findings") or []
         except urllib.error.HTTPError as e:

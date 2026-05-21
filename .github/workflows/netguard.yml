@@ -63,8 +63,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           NETGUARD_API_URL: ${{ secrets.NETGUARD_API_URL }}
           NETGUARD_SECRET: ${{ secrets.NETGUARD_SECRET }}
-          # Org-scoped NetGuard API key issued via /api/auth/signup → /api/auth/login.
           NETGUARD_API_KEY: ${{ secrets.NETGUARD_API_KEY }}
+          # POST /api/scan can take minutes with LLM enrichment + large IaC repos.
+          NETGUARD_SCAN_HTTP_TIMEOUT_SECONDS: "900"
 
       - name: Post PR comment
         if: steps.collect.outputs.iac_files != ''
