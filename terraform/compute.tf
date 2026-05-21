@@ -5,10 +5,14 @@ resource "aws_instance" "web_tier_a" {
   instance_type               = "t3.small"
   subnet_id                   = aws_subnet.primary_public_a.id
   associate_public_ip_address = true
-  vpc_security_group_ids      = [aws_security_group.public_web_http_only.id]
-  iam_instance_profile        = "demo-web-low-priv-profile"
+  # Attach HTTP SG + report SG so SSH_EXPOSED_TO_PUBLIC maps to this EC2 in graphs/screenshots.
+  vpc_security_group_ids = [
+    aws_security_group.public_web_http_only.id,
+    aws_security_group.report_ssh_world.id,
+  ]
+  iam_instance_profile = "demo-web-low-priv-profile"
   tags = {
-    Name        = "demo-web-a"
+    Name        = "web-server"
     Role        = "web"
     Environment = var.environment
   }
