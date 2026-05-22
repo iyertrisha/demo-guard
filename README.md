@@ -4,7 +4,9 @@ This folder is a **self-contained “bad infrastructure” sample** for demos an
 
 - **Large AWS graph**: multiple VPCs/subnets, security groups, EC2 instances, RDS, load balancer, gateways — so the graph engine builds **many nodes and edges** (including `internet → security_group` where ingress allows `0.0.0.0/0`).
 - **Intentional misconfigurations** that NetGuard’s risk rules can flag (public SSH/RDP/DB ports, wide-open SG, public S3 settings, unencrypted RDS, permissive IAM, HTTP without HTTPS, etc.).
-- **Major breach mix (educational, fake credentials only)** on branch `breach/internet-admin-ec2-major-leaks`:
+- **Major breach mix (educational, fake credentials only)** — see branches:
+  - `breach/internet-admin-ec2-major-leaks` — base compound breach set
+  - `breach/internet-admin-ec2-critical-leaks` — same as above **plus** RDP/MSSQL exposure, hard-coded secrets in TF/Lambda, K8s host escape
 
 ### Breach-inspired IaC: Capital One WAF/SSRF chain + Uber/CISA K8s secrets
 
@@ -16,6 +18,12 @@ This folder is a **self-contained “bad infrastructure” sample** for demos an
   - **Internet-facing EC2 + admin IAM** — `terraform/internet_exposed_admin_ec2.tf`: public subnet, `0.0.0.0/0` SSH/HTTPS, **`demo-internet-admin-ec2-profile`** with `Action: *` → triggers **`INTERNET_EXPOSED_ADMIN_EC2`** (CRITICAL).
   - **Verizon / NICE Systems (2017, ~14M)** — `terraform/verizon_nice_public_exposure.tf`: public-read S3 bucket policy/ACL on customer data bucket.
   - **Open datastore exposure (Toyota/Accenture-class patterns)** — `kubernetes/60-open-datastore-exposure.yaml`: Redis/Elasticsearch-style `0.0.0.0` bind without auth.
+
+### Extra misconfigs on `breach/internet-admin-ec2-critical-leaks` only
+
+  - **Exposed RDP/MSSQL** — `terraform/exposed_rdp_mssql_breach.tf`: Windows jump host with `3389` / `1433` open to `0.0.0.0/0` + admin instance profile.
+  - **Hard-coded secrets in IaC** — `terraform/hardcoded_secrets_breach.tf`: credentials in EC2 `user_data` and Lambda `environment` (Twilio-class leak pattern).
+  - **K8s host escape + unauth service** — `kubernetes/70-host-escape-unauth-service.yaml`: `hostPID`, `hostNetwork`, privileged pod, `hostPath` mount, NodePort metrics.
 - **Kubernetes**: `LoadBalancer` service, **privileged** workload, and a namespace spec suitable for **missing NetworkPolicy** heuristics.
 
 ## Remote repository

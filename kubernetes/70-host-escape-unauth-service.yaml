@@ -1,0 +1,44 @@
+# Kubernetes extended breach patterns: host namespaces + missing NetworkPolicy surface.
+# Compounds privileged pod risk (Tesla/K8s dashboard class misconfigs).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: host-namespace-debug
+  namespace: demo-guard
+  labels:
+    app: host-namespace-debug
+    breach.ref: k8s-host-escape-analog
+spec:
+  hostPID: true
+  hostNetwork: true
+  containers:
+    - name: debugger
+      image: nicolaka/netshoot:latest
+      command: ["sleep", "infinity"]
+      securityContext:
+        privileged: true
+        allowPrivilegeEscalation: true
+      volumeMounts:
+        - name: host-root
+          mountPath: /host
+  volumes:
+    - name: host-root
+      hostPath:
+        path: /
+        type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: unauthenticated-metrics
+  namespace: demo-guard
+  labels:
+    breach.ref: unauthenticated-service-exposure
+spec:
+  type: NodePort
+  selector:
+    app: host-namespace-debug
+  ports:
+    - port: 9090
+      targetPort: 9090
+      nodePort: 30090
