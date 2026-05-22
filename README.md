@@ -4,6 +4,9 @@ This folder is a **self-contained “bad infrastructure” sample** for demos an
 
 - **Large AWS graph**: multiple VPCs/subnets, security groups, EC2 instances, RDS, load balancer, gateways — so the graph engine builds **many nodes and edges** (including `internet → security_group` where ingress allows `0.0.0.0/0`).
 - **Intentional misconfigurations** that NetGuard’s risk rules can flag (public SSH/RDP/DB ports, wide-open SG, public S3 settings, unencrypted RDS, permissive IAM, HTTP without HTTPS, etc.).
+- **Real-world breach mix (educational, fake credentials only)**:
+  - **Capital One (2019, ~106M records)** — `terraform/capital_one_2019_waf_chain.tf` + `kubernetes/40-capital-one-waf-modsecurity.yaml`: misconfigured **ModSecurity WAF** reverse proxy on EC2, **IMDSv1** (`http_tokens = optional`), **`ISRM-WAF-Role`-style IAM** with `s3:ListBucket` / `s3:GetObject` on customer buckets (SSRF → `169.254.169.254` → `aws s3 ls` / `aws s3 sync`). See [Rhino Security Labs](https://rhinosecuritylabs.com/aws/capital-one-cloud_breach_s3-cloudgoat/) and the DOJ indictment summary.
+  - **Uber (2022)** + **public-repo K8s secret leak patterns** — `kubernetes/50-uber-cisa-committed-secrets.yaml`: hard-coded PAM-style credentials in automation and **Secrets committed as YAML** (filename pattern similar to disclosed `external-secret-repo-creds.yaml` cases).
 - **Kubernetes**: `LoadBalancer` service, **privileged** workload, and a namespace spec suitable for **missing NetworkPolicy** Heuristics.
 
 ## Remote repository

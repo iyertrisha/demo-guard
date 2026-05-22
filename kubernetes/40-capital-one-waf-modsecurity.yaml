@@ -1,0 +1,40 @@
+# Kubernetes slice of the Capital One 2019 chain: WAF / reverse-proxy tier in front of apps.
+# The real breach was EC2 ModSecurity SSRF → IMDSv1 → IAM role → private S3 exfiltration.
+# This manifest adds a vulnerable proxy Deployment (mixed with other demo-guard flaws).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: modsecurity-waf-proxy
+  namespace: demo-guard
+  labels:
+    app: modsecurity-waf-proxy
+    breach.ref: capital-one-2019
+  annotations:
+    netguard.demo/breach-note: >-
+      Misconfigured reverse proxy allowed SSRF to 169.254.169.254 (IMDSv1) and
+      ISRM-WAF-Role credentials with s3:ListBucket and s3:GetObject.
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: modsecurity-waf-proxy
+  template:
+    metadata:
+      labels:
+        app: modsecurity-waf-proxy
+    spec:
+      hostNetwork: true
+      containers:
+        - name: waf
+          image: owasp/modsecurity-crs:nginx-alpine
+          ports:
+            - containerPort: 80
+          env:
+            - name: PROXY_BACKEND
+              value: "http://demo-frontend.demo-guard.svc.cluster.local"
+            - name: ALLOW_METADATA_SSRF_DEMO
+              value: "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: true
+          resources: {}
