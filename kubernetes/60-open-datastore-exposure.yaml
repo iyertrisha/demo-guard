@@ -1,0 +1,46 @@
+# Toyota / exposed datastore patterns (2022–2023 reporting) — services bound to 0.0.0.0 without auth.
+# Simulates open Elasticsearch/Redis-style misconfigs often found in breach post-mortems.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: open-datastore-config
+  namespace: demo-guard
+  labels:
+    breach.ref: toyota-elasticsearch-exposure,accenture-open-bucket-analog
+data:
+  elasticsearch.yml: |
+    network.host: 0.0.0.0
+    http.port: 9200
+    xpack.security.enabled: false
+  redis.conf: |
+    bind 0.0.0.0
+    protected-mode no
+    requirepass ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-sidecar-no-auth
+  namespace: demo-guard
+  labels:
+    app: analytics-sidecar
+    breach.ref: open-datastore-exposure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analytics-sidecar
+  template:
+    metadata:
+      labels:
+        app: analytics-sidecar
+    spec:
+      containers:
+        - name: sidecar
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+              hostPort: 6379
+          env:
+            - name: ALLOW_EMPTY_PASSWORD
+              value: "yes"

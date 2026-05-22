@@ -4,7 +4,13 @@ This folder is a **self-contained “bad infrastructure” sample** for demos an
 
 - **Large AWS graph**: multiple VPCs/subnets, security groups, EC2 instances, RDS, load balancer, gateways — so the graph engine builds **many nodes and edges** (including `internet → security_group` where ingress allows `0.0.0.0/0`).
 - **Intentional misconfigurations** that NetGuard’s risk rules can flag (public SSH/RDP/DB ports, wide-open SG, public S3 settings, unencrypted RDS, permissive IAM, HTTP without HTTPS, etc.).
-- **Kubernetes**: `LoadBalancer` service, **privileged** workload, and a namespace spec suitable for **missing NetworkPolicy** Heuristics.
+- **Major breach mix (educational, fake credentials only)** on branch `breach/internet-admin-ec2-major-leaks`:
+  - **Internet-facing EC2 + admin IAM** — `terraform/internet_exposed_admin_ec2.tf`: public subnet, `0.0.0.0/0` SSH/HTTPS, **`demo-internet-admin-ec2-profile`** with `Action: *` → triggers **`INTERNET_EXPOSED_ADMIN_EC2`** (CRITICAL).
+  - **Capital One (2019, ~106M)** — `terraform/capital_one_2019_waf_chain.tf` + `kubernetes/40-capital-one-waf-modsecurity.yaml`: WAF SSRF → IMDSv1 → over-privileged S3 role.
+  - **Verizon / NICE Systems (2017, ~14M)** — `terraform/verizon_nice_public_exposure.tf`: public-read S3 bucket policy/ACL on customer data bucket.
+  - **Uber (2022) / committed secrets** — `kubernetes/50-uber-cisa-committed-secrets.yaml`: hard-coded PAM-style creds and Secrets in Git.
+  - **Open datastore exposure (Toyota/Accenture-class patterns)** — `kubernetes/60-open-datastore-exposure.yaml`: Redis/Elasticsearch-style `0.0.0.0` bind without auth.
+- **Kubernetes**: `LoadBalancer` service, **privileged** workload, and a namespace spec suitable for **missing NetworkPolicy** heuristics.
 
 ## Remote repository
 
