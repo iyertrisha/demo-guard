@@ -106,3 +106,24 @@ resource "aws_security_group" "db_private_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
+# NetGuard pipeline verification — SSH open to internet (intentional demo misconfig)
+resource "aws_security_group" "pipeline_verify_ssh_open" {
+  name        = "demo-pipeline-verify-ssh-open"
+  description = "Triggers PUBLIC_SSH or similar finding for CI pipeline smoke test"
+  vpc_id      = aws_vpc.primary.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
