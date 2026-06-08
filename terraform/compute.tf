@@ -47,3 +47,24 @@ resource "aws_lb" "public_app_alb" {
     Name = "demo-public-alb"
   }
 }
+
+# NetGuard demo — RDP exposed to internet (intentional misconfig for scan demo)
+resource "aws_security_group" "demo_rdp_open_world" {
+  name        = "demo-rdp-open-world"
+  description = "RDP 3389 open to 0.0.0.0/0 — triggers NetGuard public exposure finding"
+  vpc_id      = aws_vpc.primary.id
+
+  ingress {
+    from_port   = 3389
+    to_port     = 3389
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
